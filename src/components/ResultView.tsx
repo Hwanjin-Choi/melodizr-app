@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { Play, RotateCcw, Share2, Music } from "lucide-react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
+import TrackPreview from "./TrackPreview";
 
 type Track = {
   id: number;
@@ -17,76 +18,70 @@ type ResultViewProps = {
 };
 
 export default function ResultView({ tracks, onReset, onShare }: ResultViewProps) {
+  const [playingId, setPlayingId] = useState<number | null>(null);
+
+  const togglePlay = (id: number) => {
+    setPlayingId((prev) => (prev === id ? null : id));
+  };
+
   return (
     <Animated.View entering={FadeIn} className="flex-1">
-      <View className="flex-row justify-between items-center mb-8">
-        <Text className="text-white text-3xl font-black">Your Mix</Text>
-        <TouchableOpacity onPress={onReset} className="bg-dark2 p-3 rounded-full">
+      <View className="mb-6 flex-row items-center justify-between">
+        <Text className="text-3xl font-black text-white">Your Mix</Text>
+        <TouchableOpacity onPress={onReset} className="rounded-full bg-dark2 p-3">
           <RotateCcw color="#888" size={20} />
         </TouchableOpacity>
       </View>
 
       {/* Master Player */}
-      <View className="bg-gradient-to-br from-melodizrOrange to-red-600 rounded-3xl p-6 mb-8 shadow-lg shadow-melodizrOrange/20 h-48 justify-between">
-        <View className="flex-row justify-between items-start">
-          <View className="bg-white/20 p-2 rounded-lg">
+      <View className="mb-6 h-40 justify-between rounded-3xl bg-gradient-to-br from-melodizrOrange to-red-600 p-6 shadow-lg shadow-melodizrOrange/20">
+        <View className="flex-row items-start justify-between">
+          <View className="rounded-lg bg-white/20 p-2">
             <Music color="white" size={24} />
           </View>
-          <Text className="text-white/60 font-medium text-xs">
-            MASTER TRACK
-          </Text>
+          <Text className="text-xs font-medium text-white/60">MASTER TRACK</Text>
         </View>
-        <View>
-          <Text className="text-white text-2xl font-bold mb-1">
-            Session Final Mix
-          </Text>
-          <Text className="text-white/80 text-sm">
-            {tracks.length} Layers Combined
-          </Text>
-        </View>
-        <View className="flex-row items-center gap-4 mt-2">
-          <TouchableOpacity className="w-12 h-12 bg-white rounded-full items-center justify-center">
-            <Play fill="black" size={20} color="black" className="ml-1" />
-          </TouchableOpacity>
-          <View className="h-1 bg-white/30 flex-1 rounded-full overflow-hidden">
-            <View className="h-full w-1/3 bg-white" />
+        <View className="flex-row items-end justify-between">
+          <View>
+            <Text className="mb-1 text-2xl font-bold text-white">Session Final Mix</Text>
+            <Text className="text-sm text-white/80">{tracks.length} Layers Combined</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => togglePlay(-1)}
+            className="rounded-full bg-white p-3 shadow-sm"
+          >
+            {playingId === -1 ? (
+              <View className="h-5 w-5 rounded-sm bg-melodizrOrange" />
+            ) : (
+              <Play color="#F97316" size={20} fill="#F97316" />
+            )}
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Stems List */}
-      <Text className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4">
-        Recorded Layers
+      {/* Stems List with Waveforms */}
+      <Text className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-400">
+        Converted Layers
       </Text>
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {tracks.map((track, i) => (
-          <Animated.View
-            entering={FadeIn.delay(i * 100)}
-            key={track.id}
-            className="flex-row items-center bg-dark2/50 border border-dark3/50 p-4 rounded-2xl mb-3"
-          >
-            <View
-              style={{ backgroundColor: track.color }}
-              className="w-10 h-10 rounded-full items-center justify-center mr-4"
-            >
-              <Play size={16} fill="white" color="white" className="ml-0.5" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-white font-bold text-lg">{track.name}</Text>
-              <Text className="text-gray-500 text-xs uppercase">
-                {track.type}
-              </Text>
-            </View>
+          <Animated.View entering={FadeIn.delay(i * 100)} key={track.id} className="mb-0.5">
+            {/* Reuse TrackPreview for real playback/visuals */}
+            <TrackPreview
+              trackName={`${track.name} (${track.type})`}
+              isPlaying={playingId === track.id}
+              onTogglePlay={() => togglePlay(track.id)}
+            />
           </Animated.View>
         ))}
       </ScrollView>
 
       <TouchableOpacity
         onPress={onShare}
-        className="mb-4 bg-white py-4 rounded-2xl flex-row justify-center items-center gap-2 shadow-xl"
+        className="mb-4 flex-row items-center justify-center gap-2 rounded-2xl bg-white py-4 shadow-xl"
       >
         <Share2 color="black" size={20} />
-        <Text className="text-black font-bold text-lg">Share Masterpiece</Text>
+        <Text className="text-lg font-bold text-black">Share Masterpiece</Text>
       </TouchableOpacity>
     </Animated.View>
   );
