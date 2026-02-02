@@ -1,166 +1,172 @@
 import React, { useEffect, useState, useRef } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
-import { Play, Pause } from "lucide-react-native";
-import Animated, { 
-    useSharedValue, 
-    useAnimatedStyle, 
-    withTiming, 
-    Easing, 
-    cancelAnimation,
-    useDerivedValue
+import { Play, Pause, RefreshCcw, Share } from "lucide-react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+  cancelAnimation,
+  useDerivedValue,
 } from "react-native-reanimated";
-import { Audio } from 'expo-av';
+import { Audio } from "expo-av";
 import { extractWaveform } from "../utils/audioUtils";
 
 type TrackPreviewProps = {
   trackName: string;
+  uri?: string;
   isPlaying: boolean;
   onTogglePlay: () => void;
+  onRetake?: () => void;
+  onShare?: () => void;
 };
 
 // Placeholder while loading real data
 const LOADING_WAVE = Array.from({ length: 40 }).map(() => 0.2);
 
-export default function TrackPreview({ trackName, isPlaying, onTogglePlay }: TrackPreviewProps) {
-  const progress = useSharedValue(0);
-  const [waveform, setWaveform] = useState<number[]>(LOADING_WAVE);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [duration, setDuration] = useState(5000);
+const PROGRESS_WIDTH = 200; // Fixed width for progress bar for now, or use flex
 
-  // Load Audio & Waveform
+export default function TrackPreview({
+  trackName,
+  uri,
+  isPlaying,
+  onTogglePlay,
+  onRetake,
+  onShare,
+  onFinish,
+}: TrackPreviewProps & { onFinish?: () => void }) {
+  const progress = useSharedValue(0);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [duration, setDuration] = useState(0);
+  const [position, setPosition] = useState(0); // Add state for UI text updates
+
+  // Load Sound
   useEffect(() => {
     let soundObj: Audio.Sound | null = null;
 
     const load = async () => {
-       try {
-           // 1. Analyze Waveform (Heavy-ish op, do first or parallel)
-           // Using local require for demo asset
-           const waveData = await extractWaveform(require("../../assets/demo.wav"), 40);
-           setWaveform(waveData);
+      try {
+        const source = uri ? { uri } : require("../../assets/demo.wav");
+        const { sound: s, status } = await Audio.Sound.createAsync(source);
+        soundObj = s;
+        setSound(s);
 
-           // 2. Load Sound
-           const { sound: s, status } = await Audio.Sound.createAsync(
-               require("../../assets/demo.wav")
-           );
-           soundObj = s;
-           setSound(s);
-           
-           if (status.isLoaded && status.durationMillis) {
-               setDuration(status.durationMillis);
-           }
+        if (status.isLoaded && status.durationMillis) {
+          setDuration(status.durationMillis);
+        }
 
-       } catch (e) {
-           console.log("Error loading audio:", e);
-       }
+        // Listener for sync
+        s.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded) {
+            setPosition(status.positionMillis);
+            if (status.durationMillis) {
+              progress.value = withTiming(status.positionMillis / status.durationMillis, {
+                duration: 100,
+                easing: Easing.linear,
+              });
+
+              if (status.didJustFinish) {
+                console.log("Track Finished");
+                if (onFinish) onFinish(); // Notify parent
+                // Don't auto-replay. Parent toggles off.
+                // Reset visuals
+                progress.value = withTiming(0);
+                setPosition(0);
+                s.setPositionAsync(0);
+              }
+            }
+          }
+        });
+      } catch (e) {
+        console.log("Error loading audio:", e);
+      }
     };
 
     load();
 
     return () => {
-        if (soundObj) {
-            soundObj.unloadAsync();
-        }
+      if (soundObj) {
+        soundObj.unloadAsync();
+      }
     };
-  }, []);
+  }, [uri]);
 
-  // Handle Playback Sync
+  // Handle Playback Control from Parent
   useEffect(() => {
-    const syncPlayback = async () => {
-        if (!sound) return;
+    const controlSound = async () => {
+      if (!sound) return;
 
-        if (isPlaying) {
-             // Play
-             await sound.playFromPositionAsync(0); // Restart for demo loop feel? or resume? 
-             // Implementing "Restart on toggle" logic for previews usually feels snappier.
-             // Or better: resume. Let's resume.
-             // Actually, parent toggles.
-             // Let's just play.
-             // Problem: if I was paused, I resume. If I finished, I replay?
-             const status = await sound.getStatusAsync();
-             if (status.isLoaded) {
-                 if (status.positionMillis >= status.durationMillis!) {
-                     await sound.replayAsync();
-                 } else {
-                     await sound.playAsync();
-                 }
-                 
-                 // Animation
-                 progress.value = withTiming(1, { 
-                     duration: duration - status.positionMillis, // Remaining time
-                     easing: Easing.linear 
-                 });
-             }
+      const status = await sound.getStatusAsync();
+      if (!status.isLoaded) return;
+
+      if (isPlaying) {
+        // Check if finished, if so restart
+        if (status.positionMillis >= (status.durationMillis || 0)) {
+          await sound.replayAsync();
         } else {
-             // Pause
-             await sound.pauseAsync();
-             cancelAnimation(progress);
+          await sound.playAsync();
         }
+      } else {
+        await sound.pauseAsync();
+      }
     };
-    syncPlayback();
-  }, [isPlaying, sound, duration]);
-  
-  // Update progress value based on playback status intervals?
-  // Reanimated `withTiming` is smooth, but drifting can happen.
-  // For a short preview, it's fine. 
-  // Ideally, we'd use `setOnPlaybackStatusUpdate` to sync exactly, 
-  // but that causes many re-renders. `withTiming` is good enough UI approximation.
-  
-  // Stop when unmounting or changing tracks
-  useEffect(() => {
-       return () => {
-           if (sound) sound.stopAsync();
-       }
-  }, [trackName]);
+    controlSound();
+  }, [isPlaying, sound]);
+
+  // Simple formatter
+  const formatTime = (ms: number) => {
+    const totalSec = Math.floor(ms / 1000);
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  const progressStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%`,
+  }));
 
   return (
-    <View className="bg-dark2/50 border border-dark3/50 px-6 py-4 rounded-xl items-center w-full mb-8">
-      <Text className="text-gray-400 text-xs uppercase tracking-widest mb-4">
-        {waveform === LOADING_WAVE ? "Analyzing..." : "Converted Result Preview"}
-      </Text>
-      
-      <View className="flex-row items-center w-full justify-between">
-         <TouchableOpacity 
-            onPress={onTogglePlay}
-            className="w-12 h-12 bg-melodizrOrange rounded-full items-center justify-center shadow-lg"
-         >
-            {isPlaying ? (
-                <Pause fill="white" color="white" size={20} />
-            ) : (
-                <Play fill="white" color="white" size={20} className="ml-1" />
-            )}
-         </TouchableOpacity>
+    <View className="mb-4 w-full rounded-2xl border border-dark3/50 bg-dark2/80 px-4 py-3">
+      <View className="flex-row items-center justify-between">
+        {/* Play Button */}
+        <TouchableOpacity
+          onPress={onTogglePlay}
+          className="h-10 w-10 items-center justify-center rounded-full bg-melodizrOrange shadow-sm active:scale-95"
+        >
+          {isPlaying ? (
+            <Pause fill="white" color="white" size={18} />
+          ) : (
+            <Play fill="white" color="white" size={18} className="ml-0.5" />
+          )}
+        </TouchableOpacity>
 
-         <View className="flex-1 ml-4 h-12 flex-row items-center justify-between gap-0.5 opacity-90">
-             {waveform.map((barHeight, i) => {
-                 return (
-                    <WaveBar 
-                       key={i} 
-                       index={i} 
-                       totalBars={waveform.length} 
-                       progress={progress} 
-                       heightMultiplier={barHeight}
-                    />
-                 );
-             })}
-         </View>
+        {/* Progress Bar & Info */}
+        <View className="ml-3 flex-1">
+          <View className="mb-1 flex-row justify-between">
+            <Text className="text-sm font-bold text-white">{trackName}</Text>
+            <Text className="text-xs font-medium text-gray-400">
+              {formatTime(position)} / {formatTime(duration)}
+            </Text>
+          </View>
+
+          <View className="relative h-2 w-full overflow-hidden rounded-full bg-dark3">
+            <Animated.View
+              className="absolute bottom-0 left-0 top-0 bg-melodizrOrange"
+              style={progressStyle}
+            />
+          </View>
+        </View>
+
+        {/* Retake Button */}
+        {onRetake && (
+          <TouchableOpacity
+            onPress={onRetake}
+            className="ml-3 h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-dark3 active:scale-95"
+          >
+            <RefreshCcw color="#ef4444" size={16} />
+          </TouchableOpacity>
+        )}
       </View>
-      
-      <Text className="text-white font-bold mt-4">{trackName}</Text>
     </View>
   );
 }
-
-const WaveBar = ({ index, totalBars, progress, heightMultiplier }: any) => {
-    // Determine if this bar is "active" (played) based on progress
-    const isActive = useDerivedValue(() => {
-        return (index / totalBars) < progress.value;
-    });
-
-    const style = useAnimatedStyle(() => ({
-        height: 16 + (heightMultiplier * 24), // Dynamic height 16-40
-        backgroundColor: isActive.value ? '#F97316' : '#374151', // Melodizr Orange vs Gray
-        opacity: isActive.value ? 1 : 0.5
-    }));
-
-    return <Animated.View style={style} className="w-1.5 rounded-full" />;
-};
