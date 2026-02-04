@@ -9,7 +9,7 @@ export interface UploadResponse {
   [key: string]: any;
 }
 
-const API_Endpoint = "http://184.145.155.117:57476/melodizr_api/";
+const API_Endpoint = "http://67.70.78.39:57476/melodizr_api/";
 const USER_ID = "test_user";
 
 export const uploadRecording = async (
