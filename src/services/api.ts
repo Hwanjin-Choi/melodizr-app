@@ -6,6 +6,7 @@ export interface UploadResponse {
   output_audio_url?: string;
   message?: string;
   local_uri?: string;
+  name?: string; // Add name property
   [key: string]: any;
 }
 
@@ -119,6 +120,7 @@ export const uploadRecording = async (
             resolve({
               output_audio_url: newPath,
               local_uri: newPath,
+              name: serverFilename, // Return the actual filename from server
               message: "Success (WAV received)",
             });
           } catch (e) {

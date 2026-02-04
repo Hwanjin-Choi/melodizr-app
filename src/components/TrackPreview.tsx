@@ -29,30 +29,50 @@ const PROGRESS_WIDTH = 200; // Fixed width for progress bar for now, or use flex
 export default function TrackPreview({
   trackName,
   uri,
+  bpm,
   isPlaying,
   onTogglePlay,
   onRetake,
   onShare,
   onFinish,
-}: TrackPreviewProps & { onFinish?: () => void }) {
+}: TrackPreviewProps & { onFinish?: () => void; bpm?: number | null }) {
   const progress = useSharedValue(0);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [beatSound, setBeatSound] = useState<Audio.Sound | null>(null);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0); // Add state for UI text updates
+  const positionRef = useRef(0);
+  const onFinishRef = useRef(onFinish);
+  onFinishRef.current = onFinish;
 
   // Load Sound
   useEffect(() => {
     let soundObj: Audio.Sound | null = null;
+    let beatObj: Audio.Sound | null = null;
 
     const load = async () => {
       try {
         const source = uri ? { uri } : require("../../assets/demo.wav");
+
+        // Load Track
         const { sound: s, status } = await Audio.Sound.createAsync(source);
         soundObj = s;
         setSound(s);
 
         if (status.isLoaded && status.durationMillis) {
           setDuration(status.durationMillis);
+        }
+
+        // Load Beat if BPM exists
+        if (bpm) {
+          console.log("Loading Beat for Preview with BPM:", bpm);
+          const { sound: b } = await Audio.Sound.createAsync(require("../../assets/Beat.wav"));
+          const rate = bpm / 120.0;
+          await b.setIsLoopingAsync(true);
+          await b.setRateAsync(rate, true);
+          await b.setVolumeAsync(0.6);
+          beatObj = b;
+          setBeatSound(b);
         }
 
         // Listener for sync
@@ -67,12 +87,18 @@ export default function TrackPreview({
 
               if (status.didJustFinish) {
                 console.log("Track Finished");
-                if (onFinish) onFinish(); // Notify parent
+                if (onFinishRef.current) onFinishRef.current(); // Notify parent
                 // Don't auto-replay. Parent toggles off.
                 // Reset visuals
                 progress.value = withTiming(0);
                 setPosition(0);
                 s.setPositionAsync(0);
+
+                // Stop beat if it's playing
+                if (beatObj) {
+                  beatObj.stopAsync();
+                  beatObj.setPositionAsync(0);
+                }
               }
             }
           }
@@ -88,8 +114,11 @@ export default function TrackPreview({
       if (soundObj) {
         soundObj.unloadAsync();
       }
+      if (beatObj) {
+        beatObj.unloadAsync();
+      }
     };
-  }, [uri]);
+  }, [uri, bpm]);
 
   // Handle Playback Control from Parent
   useEffect(() => {
@@ -102,16 +131,22 @@ export default function TrackPreview({
       if (isPlaying) {
         // Check if finished, if so restart
         if (status.positionMillis >= (status.durationMillis || 0)) {
+          if (beatSound) await beatSound.playFromPositionAsync(0);
           await sound.replayAsync();
         } else {
+          if (beatSound) {
+            await beatSound.setPositionAsync(0);
+            await beatSound.playAsync();
+          }
           await sound.playAsync();
         }
       } else {
         await sound.pauseAsync();
+        if (beatSound) await beatSound.pauseAsync();
       }
     };
     controlSound();
-  }, [isPlaying, sound]);
+  }, [isPlaying, sound, beatSound]);
 
   // Simple formatter
   const formatTime = (ms: number) => {

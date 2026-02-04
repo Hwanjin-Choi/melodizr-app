@@ -50,7 +50,10 @@ export default function ResultView({
       masterSounds.current = [];
     }
     setIsMasterPlaying(false);
+    setMasterProgress(0);
   };
+
+  const [masterProgress, setMasterProgress] = useState(0);
 
   const toggleMasterPlay = async () => {
     // If playing, stop
@@ -61,6 +64,7 @@ export default function ResultView({
 
     // Stop individual if playing
     setPlayingId(null);
+    setMasterProgress(0);
 
     // Load ALL tracks
     try {
@@ -78,10 +82,15 @@ export default function ResultView({
       // We attach a listener to the first main track (index 0) to stop everything when it finishes.
       if (loadedSounds.length > 0) {
         loadedSounds[0].setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            console.log("Master playback finished. Stopping all.");
-            stopMaster();
-            // Note: stopMaster clears masterSounds which prevents memory leaks
+          if (status.isLoaded) {
+            if (status.durationMillis) {
+              setMasterProgress(status.positionMillis / status.durationMillis);
+            }
+            if (status.didJustFinish) {
+              console.log("Master playback finished. Stopping all.");
+              stopMaster();
+              setMasterProgress(0);
+            }
           }
         });
       }
@@ -114,59 +123,8 @@ export default function ResultView({
   React.useEffect(() => {
     return () => {
       stopMaster();
-      stopBeatPreview();
     };
   }, []);
-
-  // Individual Track Beat Sync Logic
-  const beatPreviewSound = useRef<Audio.Sound | null>(null);
-
-  useEffect(() => {
-    const handleBeatSync = async () => {
-      // If playingId matches a track that needs beat sync (e.g. tracks[0] or type="base")
-      const playingTrack = tracks.find((t) => t.id === playingId);
-
-      // Check if this track is the "Base" track (usually index 0 or type 'base')
-      // And has BPM
-      if (playingTrack && playingTrack.bpm && playingTrack.type === "base") {
-        // Start Beat Sync
-        // Load if not loaded
-        if (!beatPreviewSound.current) {
-          try {
-            console.log("Loading Beat sync for Result View");
-            const { sound: beat } = await Audio.Sound.createAsync(require("../../assets/Beat.wav"));
-            const rate = playingTrack.bpm / 120.0;
-            await beat.setIsLoopingAsync(true);
-            await beat.setRateAsync(rate, true);
-            await beat.setVolumeAsync(0.6);
-            await beat.playAsync();
-            beatPreviewSound.current = beat;
-          } catch (e) {
-            console.log("Failed to load beat for preview", e);
-          }
-        } else {
-          await beatPreviewSound.current.playAsync();
-        }
-      } else {
-        // Stop Beat Sync
-        if (beatPreviewSound.current) {
-          await beatPreviewSound.current.stopAsync();
-        }
-      }
-    };
-
-    handleBeatSync();
-
-    // Cleanup on unmount handled by global cleanup, but also on id change
-  }, [playingId]);
-
-  const stopBeatPreview = async () => {
-    if (beatPreviewSound.current) {
-      await beatPreviewSound.current.stopAsync();
-      await beatPreviewSound.current.unloadAsync();
-      beatPreviewSound.current = null;
-    }
-  };
 
   return (
     <Animated.View entering={FadeIn} className="flex-1">
@@ -177,29 +135,53 @@ export default function ResultView({
         </TouchableOpacity>
       </View>
 
-      {/* Master Player */}
-      <View className="mb-6 h-40 justify-between rounded-3xl bg-gradient-to-br from-melodizrOrange to-red-600 p-6 shadow-lg shadow-melodizrOrange/20">
-        <View className="flex-row items-start justify-between">
-          <View className="rounded-lg bg-white/20 p-2">
-            <Music color="white" size={24} />
+      {/* Master Player - Hero Card */}
+      <View className="mb-8 h-80 w-full justify-between rounded-[40px] bg-dark2 p-8">
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-3">
+            <View className="h-10 w-10 items-center justify-center rounded-full bg-melodizrOrange/20">
+              <Music color="#F97316" size={20} />
+            </View>
+            <View>
+              <Text className="text-xs font-bold uppercase tracking-widest text-melodizrOrange">
+                Master Track
+              </Text>
+              <Text className="text-sm font-medium text-gray-400">
+                {tracks.length} Layers Combined
+              </Text>
+            </View>
           </View>
-          <Text className="text-xs font-medium text-white/60">MASTER TRACK</Text>
         </View>
-        <View className="flex-row items-end justify-between">
-          <View>
-            <Text className="mb-1 text-2xl font-bold text-white">Session Final Mix</Text>
-            <Text className="text-sm text-white/80">{tracks.length} Layers Combined</Text>
+
+        {/* Central Visual / Title */}
+        <View className="flex-1 items-center justify-center py-6">
+          <Text className="mb-2 text-center text-3xl font-black leading-tight tracking-tight text-white">
+            Session Final Mix
+          </Text>
+        </View>
+
+        {/* Controls Area */}
+        <View className="w-full gap-6">
+          {/* Progress Bar */}
+          <View className="h-2 w-full overflow-hidden rounded-full bg-dark3">
+            <View
+              className="h-full bg-melodizrOrange"
+              style={{ width: `${masterProgress * 100}%` }}
+            />
           </View>
-          <TouchableOpacity
-            onPress={toggleMasterPlay}
-            className="rounded-full bg-white p-3 shadow-sm"
-          >
-            {isMasterPlaying ? (
-              <View className="h-5 w-5 rounded-sm bg-melodizrOrange" />
-            ) : (
-              <Play color="#F97316" size={20} fill="#F97316" />
-            )}
-          </TouchableOpacity>
+
+          <View className="items-center">
+            <TouchableOpacity
+              onPress={toggleMasterPlay}
+              className="h-20 w-20 items-center justify-center rounded-full bg-melodizrOrange active:scale-95"
+            >
+              {isMasterPlaying ? (
+                <View className="h-8 w-8 rounded-md bg-white" />
+              ) : (
+                <Play color="white" size={32} fill="white" className="ml-1" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -230,6 +212,7 @@ export default function ResultView({
             <TrackPreview
               trackName={`${track.name} (${track.type})`}
               uri={track.uri}
+              bpm={track.type === "base" ? track.bpm : undefined}
               isPlaying={playingId === track.id}
               onTogglePlay={() => togglePlay(track.id)}
               onFinish={() => togglePlay(track.id)} // Toggling off resets ID -> stops beat
@@ -245,7 +228,7 @@ export default function ResultView({
         className="mb-4 flex-row items-center justify-center gap-2 rounded-2xl bg-white py-4 shadow-xl"
       >
         <Share2 color="black" size={20} />
-        <Text className="text-lg font-bold text-black">Share Masterpiece</Text>
+        <Text className="text-lg font-bold text-black">Share Track</Text>
       </TouchableOpacity>
     </Animated.View>
   );

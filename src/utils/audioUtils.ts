@@ -97,7 +97,7 @@ export const extractBpmFromFilename = (filename: string): number | null => {
   try {
     // Regex looking for _bpm followed by digits followed by _
     // Example: chor_bpm117_F01... -> 117
-    const match = filename.match(/_bpm(\d+)_/);
+    const match = filename.match(/_bpm(\d+)(_|\.|$)/);
     if (match && match[1]) {
       const bpm = parseInt(match[1], 10);
       return isNaN(bpm) ? null : bpm;

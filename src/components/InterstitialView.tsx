@@ -27,9 +27,9 @@ export default function InterstitialView({
     <Animated.View
       entering={FadeIn}
       exiting={FadeOut}
-      className="flex-1 items-center justify-center"
+      className="flex-1 items-center justify-center px-6"
     >
-      <View className="absolute right-0 top-0 z-10">
+      <View className="absolute right-6 top-0 z-10">
         <TouchableOpacity
           onPress={onRetake}
           className="flex-row items-center rounded-full bg-dark2/80 px-4 py-2"
@@ -40,24 +40,31 @@ export default function InterstitialView({
       </View>
 
       <CheckCircle2 size={64} color="#10B981" className="mb-6 mt-10" />
-      <Text className="mb-8 text-center text-3xl font-bold text-white">Conversion Complete!</Text>
+      <Text className="mb-2 text-center text-3xl font-bold text-white">Conversion Complete!</Text>
+      <Text className="mb-8 text-center font-medium text-gray-400">
+        Review your new layer below
+      </Text>
 
-      {recordingStep === 0 && (
-        <Text className="mb-8 px-8 text-center leading-6 text-gray-400">
-          Review the converted base track. If you like it, let's add the melody layer.
-        </Text>
-      )}
-      {recordingStep >= 1 && (
-        <Text className="mb-8 px-8 text-center leading-6 text-gray-400">
-          Changes applied. Ready for the next layer or the final mix?
-        </Text>
+      {/* Preview Player */}
+      {lastTrack && (
+        <View className="mb-8 w-full">
+          <TrackPreview
+            trackName={lastTrack.name || "Converted Track"}
+            uri={lastTrack.uri}
+            isPlaying={isPlaying}
+            onTogglePlay={onTogglePlay}
+            bpm={lastTrack.bpm}
+            onFinish={onTogglePlay}
+            // No retake/share buttons here, just simple preview
+          />
+        </View>
       )}
 
       <View className="w-full gap-4">
         {recordingStep < 2 && (
           <TouchableOpacity
             onPress={onNext}
-            className="items-center rounded-2xl bg-melodizrOrange py-4 shadow-lg"
+            className="items-center rounded-2xl bg-melodizrOrange py-4 shadow-lg active:scale-95"
           >
             <Text className="text-lg font-bold text-white">
               {recordingStep === 0 ? "Add Melody Layer" : "Add Piano Layer"}
@@ -65,16 +72,10 @@ export default function InterstitialView({
           </TouchableOpacity>
         )}
 
-        {/* Allow finishing anytime after first track if desired, or strictly 3rd track? 
-            User previous request implied strict logic "Base -> Melody -> Piano -> Result".
-            But usually "Finish" is available early. I'll hide "Finish" until Piano if strict, 
-            or show secondary "Finish" button.
-            Let's stick to the "Add" button primarily until the end.
-        */}
         {recordingStep >= 2 ? (
           <TouchableOpacity
             onPress={onFinish}
-            className="items-center rounded-2xl bg-melodizrOrange py-4 shadow-lg"
+            className="items-center rounded-2xl bg-melodizrOrange py-4 shadow-lg active:scale-95"
           >
             <Text className="text-lg font-bold text-white">Finish & See Result</Text>
           </TouchableOpacity>
@@ -82,7 +83,7 @@ export default function InterstitialView({
           // Early exit option
           <TouchableOpacity
             onPress={onFinish}
-            className="items-center rounded-2xl border border-dark3 bg-dark2 py-4"
+            className="items-center rounded-2xl border border-dark3 bg-dark2 py-4 active:scale-95"
           >
             <Text className="text-lg font-bold text-white">Finish & See Result</Text>
           </TouchableOpacity>

@@ -1,13 +1,8 @@
 import React, { useState, useEffect } from "react";
-import {
-  View,
-  SafeAreaView,
-  StatusBar,
-  Share,
-  Alert,
-  ActionSheetIOS,
-  Platform,
-} from "react-native";
+import { View, SafeAreaView, StatusBar, Alert, ActionSheetIOS, Platform } from "react-native";
+import Share from "react-native-share"; // Import react-native-share
+
+// ... existing imports ...
 import * as Sharing from "expo-sharing"; // Import sharing
 import WelcomeView from "../components/WelcomeView";
 import RecordingView from "../components/RecordingView";
@@ -105,8 +100,15 @@ export default function StudioScreen() {
           // Extract BPM if available (from filename)
           let bpm: number | null = null;
           bpm = extractBpmFromFilename(trackUri);
+
+          // Fallback: If Step 0 (Base), we MUST have a beat. Default to 120 if server didn't provide one.
+          if (recordingStep === 0 && !bpm) {
+            console.log("No BPM found in filename, defaulting to 120 for Base track");
+            bpm = 120;
+          }
+
           if (bpm) {
-            console.log("Extracted BPM:", bpm);
+            console.log("Extracted/Default BPM:", bpm);
           }
 
           addTrack(currentStepData.id, trackName, trackColor, trackUri, bpm);
@@ -303,51 +305,28 @@ export default function StudioScreen() {
     });
   };
 
-  const handleShare = async () => {
-    // Show ActionSheet to choose track to share
-    const options = ["Cancel", ...tracks.map((t) => `Share ${t.name} (${t.type})`)];
-    const cancelButtonIndex = 0;
+  const handleShareAll = async () => {
+    if (tracks.length === 0) return;
 
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options,
-          cancelButtonIndex,
-          title: "Share Masterpiece",
-          message: "Select a track stem to share",
-        },
-        (buttonIndex) => {
-          if (buttonIndex > 0) {
-            // Determine track based on index
-            // options has Cancel at 0.
-            // tracks array index = buttonIndex - 1.
-            const track = tracks[buttonIndex - 1];
-            if (track) handleShareTrack(track.id);
-          }
-        }
-      );
-    } else {
-      // Android simple alert fallback? Or just simple share last track?
-      // Let's implement alert with options if possible, but Alert buttons are limited.
-      // For now, let's just default to sharing the last track or generic share.
-      // Actually, Android usually relies on custom UI or just single share.
-      // We will just let them click the individual buttons for stems on Android.
-      // But for the main button, let's share the LAST added track (usually the full mix if we had one, or Piano).
-      if (tracks.length > 0) {
-        const buttons: {
-          text: string;
-          style?: "default" | "cancel" | "destructive";
-          onPress: () => Promise<void> | void;
-        }[] = tracks.map((t) => ({
-          text: t.name,
-          style: "default",
-          onPress: async () => await handleShareTrack(t.id),
-        }));
-        buttons.push({ text: "Cancel", style: "cancel", onPress: async () => {} });
+    const urls = tracks.map((t) => t.uri).filter((u) => !!u);
+    if (urls.length === 0) return;
 
-        Alert.alert("Share", "Select a track to share", buttons);
-      }
+    try {
+      await Share.open({
+        urls,
+        type: "audio/wav",
+        title: "Share Tracks",
+        message: "Here are the tracks from my Melodizr session.",
+        failOnCancel: false,
+      });
+    } catch (error) {
+      console.log("Share all cancelled or failed", error);
     }
+  };
+
+  const handleShare = async () => {
+    // Directly share all without prompt
+    handleShareAll();
   };
 
   return (
@@ -376,7 +355,7 @@ export default function StudioScreen() {
             recordingStep={recordingStep}
             lastTrack={tracks[tracks.length - 1]}
             isPlaying={isPlaying}
-            onTogglePlay={() => setIsPlaying(!isPlaying)}
+            onTogglePlay={() => setIsPlaying((p) => !p)}
             onNext={handleNextStep}
             onFinish={handleFinish}
             onRetake={handleRetake}
