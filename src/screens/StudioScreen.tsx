@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { View, SafeAreaView, StatusBar, Alert, ActionSheetIOS, Platform } from "react-native";
+import {
+  View,
+  SafeAreaView,
+  StatusBar,
+  Alert,
+  ActionSheetIOS,
+  Platform,
+  AppState,
+} from "react-native";
 import Share from "react-native-share"; // Import react-native-share
 
 // ... existing imports ...
@@ -9,6 +17,9 @@ import RecordingView from "../components/RecordingView";
 import ProcessingView from "../components/ProcessingView";
 import InterstitialView from "../components/InterstitialView";
 import ResultView from "../components/ResultView";
+import PermissionBlockedView from "../components/PermissionBlockedView"; // Import Blocked View
+
+import { Audio } from "expo-av"; // Import Audio for permissions
 
 import { setupAudioMode, extractBpmFromFilename } from "../utils/audioUtils";
 import { uploadRecording } from "../services/api";
@@ -31,10 +42,38 @@ export default function StudioScreen() {
   // Playback State for Interstitial
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Init Audio Mode
+  // Permission State
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null); // null = loading/undetermined
+
+  // Init Audio Mode & Permissions
   useEffect(() => {
     setupAudioMode();
+    checkPermissions();
   }, []);
+
+  // Listen for app foregrounding to re-check permissions (if user went to settings)
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        checkPermissions();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const checkPermissions = async () => {
+    try {
+      const response = await Audio.requestPermissionsAsync();
+      setHasPermission(response.status === "granted");
+    } catch (error) {
+      console.error("Error asking for permissions:", error);
+      // If error, assume denied or try again later?
+      // Lets keep it as null or false
+    }
+  };
 
   const STEPS = [
     {
@@ -333,44 +372,50 @@ export default function StudioScreen() {
     <SafeAreaView className="flex-1 bg-dark1">
       <StatusBar barStyle="light-content" />
       <View className="flex-1 px-6 pt-6">
-        {phase === "welcome" && <WelcomeView onStart={startApp} />}
+        {hasPermission === false ? (
+          <PermissionBlockedView />
+        ) : (
+          <>
+            {phase === "welcome" && <WelcomeView onStart={startApp} />}
 
-        {(phase === "idle" || phase === "recording") && (
-          <RecordingView
-            stepData={currentStepData}
-            recordingStep={recordingStep}
-            totalSteps={STEPS.length}
-            isRecording={phase === "recording"}
-            maxDuration={sessionDuration}
-            backingTracks={tracks}
-            onRecordPress={startRecording}
-            onStopPress={handleRecordingStop}
-          />
-        )}
+            {(phase === "idle" || phase === "recording") && (
+              <RecordingView
+                stepData={currentStepData}
+                recordingStep={recordingStep}
+                totalSteps={STEPS.length}
+                isRecording={phase === "recording"}
+                maxDuration={sessionDuration}
+                backingTracks={tracks}
+                onRecordPress={startRecording}
+                onStopPress={handleRecordingStop}
+              />
+            )}
 
-        {phase === "processing" && <ProcessingView />}
+            {phase === "processing" && <ProcessingView />}
 
-        {phase === "interstitial" && (
-          <InterstitialView
-            recordingStep={recordingStep}
-            lastTrack={tracks[tracks.length - 1]}
-            isPlaying={isPlaying}
-            onTogglePlay={() => setIsPlaying((p) => !p)}
-            onNext={handleNextStep}
-            onFinish={handleFinish}
-            onRetake={handleRetake}
-          />
-        )}
+            {phase === "interstitial" && (
+              <InterstitialView
+                recordingStep={recordingStep}
+                lastTrack={tracks[tracks.length - 1]}
+                isPlaying={isPlaying}
+                onTogglePlay={() => setIsPlaying((p) => !p)}
+                onNext={handleNextStep}
+                onFinish={handleFinish}
+                onRetake={handleRetake}
+              />
+            )}
 
-        {phase === "result" && (
-          <ResultView
-            tracks={tracks}
-            onReset={resetStudio}
-            onShare={handleShare}
-            onAddPiano={recordingStep < 2 ? handleAddPiano : undefined}
-            onRetakeTrack={handleRetakeTrack}
-            onShareTrack={handleShareTrack}
-          />
+            {phase === "result" && (
+              <ResultView
+                tracks={tracks}
+                onReset={resetStudio}
+                onShare={handleShare}
+                onAddPiano={recordingStep < 2 ? handleAddPiano : undefined}
+                onRetakeTrack={handleRetakeTrack}
+                onShareTrack={handleShareTrack}
+              />
+            )}
+          </>
         )}
       </View>
     </SafeAreaView>

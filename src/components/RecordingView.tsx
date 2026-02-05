@@ -137,15 +137,9 @@ export default function RecordingView({
         setIsPreviewPlaying(false);
 
         try {
-          // Request permissions
-          const perm = await Audio.requestPermissionsAsync();
-          if (perm.status !== "granted") {
-            Alert.alert("Permission to access microphone is required!");
-            // Force stop logic handled by parent if we fail?
-            // For now, let's assume parent toggled state. We can't toggle it back easily without a prop callback for cancellation.
-            // Ideally onRecordPress checks first, but we are doing reactive style here.
-            return;
-          }
+          // Permission is already checked in StudioScreen
+          // const perm = await Audio.requestPermissionsAsync();
+          // if (perm.status !== "granted") { ... }
 
           // Config Audio Mode for Recording
           await Audio.setAudioModeAsync({
