@@ -21,7 +21,13 @@ import PermissionBlockedView from "../components/PermissionBlockedView"; // Impo
 
 import { Audio } from "expo-av"; // Import Audio for permissions
 
-import { setupAudioMode, extractBpmFromFilename } from "../utils/audioUtils";
+import {
+  setupAudioMode,
+  extractBpmFromFilename,
+  setPlaybackAudioMode,
+  setRecordingAudioMode,
+  createZipArchive,
+} from "../utils/audioUtils";
 import { uploadRecording } from "../services/api";
 
 export type StudioPhase =
@@ -63,6 +69,22 @@ export default function StudioScreen() {
       subscription.remove();
     };
   }, []);
+
+  // Audio Mode Switching based on Phase
+  useEffect(() => {
+    const switchAudioMode = async () => {
+      if (phase === "recording") {
+        // We need microphone ONLY when actually recording
+        console.log("Switching to Recording Mode (Mic Active)");
+        await setRecordingAudioMode();
+      } else {
+        // Welcome, Idle (Preview), Processing, Interstitial, Result -> Speaker Active
+        console.log("Switching to Playback Mode (Speaker Active)");
+        await setPlaybackAudioMode();
+      }
+    };
+    switchAudioMode();
+  }, [phase]);
 
   const checkPermissions = async () => {
     try {
@@ -347,13 +369,22 @@ export default function StudioScreen() {
   const handleShareAll = async () => {
     if (tracks.length === 0) return;
 
-    const urls = tracks.map((t) => t.uri).filter((u) => !!u);
-    if (urls.length === 0) return;
-
     try {
+      const filesToZip = tracks
+        .filter((t) => !!t.uri)
+        .map((t) => ({
+          uri: t.uri,
+          name: `${t.name.replace(/[^a-zA-Z0-9]/g, "_")}.wav`,
+        }));
+
+      if (filesToZip.length === 0) return;
+
+      // Create ZIP
+      const zipUri = await createZipArchive(filesToZip);
+
       await Share.open({
-        urls,
-        type: "audio/wav",
+        url: zipUri,
+        type: "application/zip",
         title: "Share Tracks",
         message: "Here are the tracks from my Melodizr session.",
         failOnCancel: false,

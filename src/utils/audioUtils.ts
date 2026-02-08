@@ -1,20 +1,39 @@
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
+import JSZip from "jszip";
 
 import { Audio } from "expo-av";
 
-export const setupAudioMode = async () => {
+export const setRecordingAudioMode = async () => {
   try {
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
       staysActiveInBackground: false,
       shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false, // Default to speaker
+      playThroughEarpieceAndroid: false,
     });
   } catch (e) {
-    console.warn("Failed to set audio mode", e);
+    console.warn("Failed to set recording audio mode", e);
   }
+};
+
+export const setPlaybackAudioMode = async () => {
+  try {
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false, // Critical: Disabling recording routes audio to Speaker
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    });
+  } catch (e) {
+    console.warn("Failed to set playback audio mode", e);
+  }
+};
+
+export const setupAudioMode = async () => {
+  await setRecordingAudioMode(); // Default start state
 };
 
 export const extractWaveform = async (
@@ -106,5 +125,37 @@ export const extractBpmFromFilename = (filename: string): number | null => {
   } catch (e) {
     console.warn("Failed to extract BPM", e);
     return null;
+  }
+};
+
+export const createZipArchive = async (files: { uri: string; name: string }[]): Promise<string> => {
+  try {
+    const zip = new JSZip();
+
+    for (const file of files) {
+      if (!file.uri) continue;
+      // Read file content
+      const content = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      // Add to zip
+      zip.file(file.name, content, { base64: true });
+    }
+
+    // Generate zip file
+    const base64 = await zip.generateAsync({ type: "base64" });
+
+    // Save to temp
+    const filename = `Melodizr_Session_${Date.now()}.zip`;
+    const uri = FileSystem.cacheDirectory + filename;
+
+    await FileSystem.writeAsStringAsync(uri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    return uri;
+  } catch (e) {
+    console.error("Failed to create zip archive", e);
+    throw e;
   }
 };

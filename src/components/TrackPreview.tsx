@@ -70,7 +70,7 @@ export default function TrackPreview({
           const rate = bpm / 120.0;
           await b.setIsLoopingAsync(true);
           await b.setRateAsync(rate, true);
-          await b.setVolumeAsync(0.6);
+          await b.setVolumeAsync(1.0);
           beatObj = b;
           setBeatSound(b);
         }
@@ -131,11 +131,15 @@ export default function TrackPreview({
       if (isPlaying) {
         // Check if finished, if so restart
         if (status.positionMillis >= (status.durationMillis || 0)) {
-          if (beatSound) await beatSound.playFromPositionAsync(0);
-          await sound.replayAsync();
-        } else {
           if (beatSound) {
             await beatSound.setPositionAsync(0);
+            await beatSound.playAsync();
+          }
+          await sound.replayAsync();
+        } else {
+          // Resume from current position
+          if (beatSound) {
+            // content-change: Removed explicit setPositionAsync(0) to allow resume
             await beatSound.playAsync();
           }
           await sound.playAsync();

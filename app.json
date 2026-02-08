@@ -14,11 +14,13 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.moonuche.melodizr-app",
+      "bundleIdentifier": "com.moonuche.melodizr-app-dev",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
-        }
+        },
+        "LSApplicationQueriesSchemes": ["whatsapp", "mailto", "instagram", "fb"],
+        "NSPhotoLibraryAddUsageDescription": "Melodizr needs access to save your tracks."
       }
     },
     "android": {
@@ -33,9 +35,6 @@
     "web": {
       "favicon": "./assets/logo.png"
     },
-    "plugins": [
-      "expo-asset",
-      "expo-audio"
-    ]
+    "plugins": ["expo-asset", "expo-audio"]
   }
 }
