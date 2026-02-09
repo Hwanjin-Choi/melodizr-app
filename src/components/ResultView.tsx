@@ -68,15 +68,15 @@ export default function ResultView({
 
     // Load ALL tracks
     try {
-      const loadedSounds: Audio.Sound[] = [];
-
-      // 1. Load User/Converted Tracks
-      for (const track of tracks) {
-        const source =
-          typeof track.uri === "string" ? { uri: track.uri } : require("../../assets/demo.wav");
-        const { sound } = await Audio.Sound.createAsync(source);
-        loadedSounds.push(sound);
-      }
+      const loadedSounds = await Promise.all(
+        tracks.map(async (track) => {
+          console.log("[Audio] Loading Master Track:", track.name);
+          const source =
+            typeof track.uri === "string" ? { uri: track.uri } : require("../../assets/demo.wav");
+          const { sound } = await Audio.Sound.createAsync(source);
+          return sound;
+        })
+      );
 
       // Auto-stop logic for Master Player
       // We attach a listener to the first main track (index 0) to stop everything when it finishes.

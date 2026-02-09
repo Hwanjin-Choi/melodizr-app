@@ -73,12 +73,14 @@ export default function StudioScreen() {
   // Audio Mode Switching based on Phase
   useEffect(() => {
     const switchAudioMode = async () => {
-      if (phase === "recording") {
-        // We need microphone ONLY when actually recording
-        console.log("Switching to Recording Mode (Mic Active)");
+      // If we are in "recording" OR "idle" (Preview/Studio), we want mic permission to be active
+      // but routed to speaker (allowsIOSDefaultToSpeaker: true).
+      // This prevents the "switch" lag when going from Idle -> Recording.
+      if (phase === "recording" || phase === "idle") {
+        console.log("Switching to Recording Audio Mode (Mic + Speaker)");
         await setRecordingAudioMode();
       } else {
-        // Welcome, Idle (Preview), Processing, Interstitial, Result -> Speaker Active
+        // Welcome, Processing, Interstitial, Result -> Speaker Active (No Mic needed)
         console.log("Switching to Playback Mode (Speaker Active)");
         await setPlaybackAudioMode();
       }
@@ -107,19 +109,30 @@ export default function StudioScreen() {
         mode: "chord",
         // Options: strum_down, strum_up_down, arpeggio, quarter, eighth
         chord_pattern: "strum_down",
+        grid_resolution: "1/8",
       },
     },
     {
       id: "melody",
       title: "Melody",
       prompt: "Sing the lead vocal or melody line on top.",
-      apiParams: { instrument: "", mode: "vox", chord_pattern: "" },
+      apiParams: {
+        instrument: "",
+        mode: "vox",
+        chord_pattern: "",
+        tune_preset: "hard",
+      },
     },
     {
       id: "piano",
       title: "Piano Layer",
       prompt: "Add harmonic richness with a piano.",
-      apiParams: { instrument: "dry_piano", mode: "chord", chord_pattern: "strum_down" },
+      apiParams: {
+        instrument: "dry_piano",
+        mode: "chord",
+        chord_pattern: "strum_down",
+        grid_resolution: "1/16",
+      },
     },
   ];
 
@@ -137,7 +150,11 @@ export default function StudioScreen() {
             currentRecordingUri,
             params.mode,
             params.instrument,
-            params.chord_pattern
+            params.chord_pattern,
+            {
+              gridResolution: params.grid_resolution,
+              tunePreset: params.tune_preset,
+            }
           );
 
           // Use response data

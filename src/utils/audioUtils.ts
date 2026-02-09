@@ -6,12 +6,14 @@ import { Audio } from "expo-av";
 
 export const setRecordingAudioMode = async () => {
   try {
+    // @ts-ignore: allowsIOSDefaultToSpeaker is valid in newer Expo AV but types might be lagging
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
+      staysActiveInBackground: true,
       shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
+      playThroughEarpieceAndroid: false, // Default false, but allowsIOSDefaultToSpeaker handles override
+      allowsIOSDefaultToSpeaker: true,
     });
   } catch (e) {
     console.warn("Failed to set recording audio mode", e);

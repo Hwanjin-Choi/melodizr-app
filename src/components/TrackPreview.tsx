@@ -48,6 +48,7 @@ export default function TrackPreview({
   // Load Sound
   useEffect(() => {
     let soundObj: Audio.Sound | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
 
     const load = async () => {
       try {
@@ -89,9 +90,13 @@ export default function TrackPreview({
       }
     };
 
-    load();
+    // Debounce to allow previous screen cleanup
+    timeoutId = setTimeout(() => {
+      load();
+    }, 100);
 
     return () => {
+      if (timeoutId) clearTimeout(timeoutId);
       if (soundObj) {
         soundObj.unloadAsync();
       }

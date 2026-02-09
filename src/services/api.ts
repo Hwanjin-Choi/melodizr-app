@@ -13,14 +13,24 @@ export interface UploadResponse {
 const API_Endpoint = "http://67.70.78.39:57476/melodizr_api/";
 const USER_ID = "test_user";
 
+export interface UploadOptions {
+  gridResolution?: string;
+  tunePreset?: string;
+}
+
 export const uploadRecording = async (
   audioUri: string,
   mode: string,
   instrument: string,
-  chordPattern: string = "strum_down"
+  chordPattern: string = "strum_down",
+  options: UploadOptions = {}
 ): Promise<UploadResponse> => {
   try {
-    console.log(`[API] Uploading: Mode=${mode}, Inst=${instrument}, Pattern=${chordPattern}`);
+    console.log(
+      `[API] Uploading: Mode=${mode}, Inst=${instrument}, Pattern=${chordPattern}, Options=${JSON.stringify(
+        options
+      )}`
+    );
 
     const formData = new FormData();
 
@@ -42,6 +52,13 @@ export const uploadRecording = async (
     formData.append("instrument", instrument);
     formData.append("chord_pattern", chordPattern);
     formData.append("wav_only", "true");
+
+    if (options.gridResolution) {
+      formData.append("grid_resolution", options.gridResolution);
+    }
+    if (options.tunePreset) {
+      formData.append("tune_preset", options.tunePreset);
+    }
 
     // DEBUG: Log FormData contents
     console.log(`========== [API] Uploading: ${filename} ==========`);

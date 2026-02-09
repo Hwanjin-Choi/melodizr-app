@@ -68,21 +68,29 @@ export default function RecordingView({
 
       if (backingTracks && backingTracks.length > 0) {
         try {
-          // 1. Load All Backing Tracks
-          for (const track of backingTracks) {
-            console.log("[Audio] Loading Backing Track:", track.name, track.uri);
-            const source =
-              typeof track.uri === "string" ? { uri: track.uri } : require("../../assets/demo.wav");
-            const { sound: s } = await Audio.Sound.createAsync(source);
-            await s.setVolumeAsync(volume);
-            soundObjects[track.id] = s;
+          // 1. Load All Backing Tracks in Parallel
+          const loadedSounds = await Promise.all(
+            backingTracks.map(async (track: any) => {
+              console.log("[Audio] Loading Backing Track:", track.name, track.uri);
+              const source =
+                typeof track.uri === "string"
+                  ? { uri: track.uri }
+                  : require("../../assets/demo.wav");
+              const { sound: s } = await Audio.Sound.createAsync(source);
+              await s.setVolumeAsync(volume);
 
-            // Sync Base track for Preview loop
-            if (track === backingTracks[0]) {
-              s.setOnPlaybackStatusUpdate(async (status) => {
+              return { id: track.id, sound: s, isBase: track === backingTracks[0] };
+            })
+          );
+
+          loadedSounds.forEach(({ id, sound, isBase }) => {
+            soundObjects[id] = sound;
+
+            // Sync Base track callback (attached after we have all sounds populated)
+            if (isBase) {
+              sound.setOnPlaybackStatusUpdate(async (status) => {
                 if (status.isLoaded && status.didJustFinish) {
                   setIsPreviewPlaying(false);
-
                   // Reset all sounds to 0
                   await Promise.all(
                     Object.values(soundObjects).map((so) => so.setPositionAsync(0))
@@ -90,7 +98,8 @@ export default function RecordingView({
                 }
               });
             }
-          }
+          });
+
           setBackingSounds(soundObjects);
         } catch (e) {
           console.log("Failed to load sounds", e);
@@ -126,9 +135,14 @@ export default function RecordingView({
           const perm = await Audio.requestPermissionsAsync();
           if (perm.status !== "granted") return;
 
+          // @ts-ignore: allowsIOSDefaultToSpeaker is valid in newer Expo AV but types might be lagging
           await Audio.setAudioModeAsync({
             allowsRecordingIOS: true,
             playsInSilentModeIOS: true,
+            staysActiveInBackground: true,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false,
+            allowsIOSDefaultToSpeaker: true,
           });
 
           // Check again before creating
