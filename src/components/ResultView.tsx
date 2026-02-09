@@ -95,18 +95,7 @@ export default function ResultView({
         });
       }
 
-      // 2. Load Beat if BPM is present in any track (specifically the first processed one)
-      // Find track with BPM
-      const trackWithBpm = tracks.find((t) => t.bpm);
-      if (trackWithBpm && trackWithBpm.bpm) {
-        const { sound: beat } = await Audio.Sound.createAsync(require("../../assets/Beat.wav"));
-        const rate = trackWithBpm.bpm / 120.0;
-        await beat.setIsLoopingAsync(true);
-        await beat.setRateAsync(rate, true);
-        // Lower volume for beat in master mix maybe?
-        await beat.setVolumeAsync(0.6);
-        loadedSounds.push(beat);
-      }
+      // Beat mixing logic removed as per new requirement
 
       masterSounds.current = loadedSounds;
       setIsMasterPlaying(true);

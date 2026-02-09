@@ -38,7 +38,7 @@ export default function TrackPreview({
 }: TrackPreviewProps & { onFinish?: () => void; bpm?: number | null }) {
   const progress = useSharedValue(0);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [beatSound, setBeatSound] = useState<Audio.Sound | null>(null);
+
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0); // Add state for UI text updates
   const positionRef = useRef(0);
@@ -48,7 +48,6 @@ export default function TrackPreview({
   // Load Sound
   useEffect(() => {
     let soundObj: Audio.Sound | null = null;
-    let beatObj: Audio.Sound | null = null;
 
     const load = async () => {
       try {
@@ -61,18 +60,6 @@ export default function TrackPreview({
 
         if (status.isLoaded && status.durationMillis) {
           setDuration(status.durationMillis);
-        }
-
-        // Load Beat if BPM exists
-        if (bpm) {
-          console.log("Loading Beat for Preview with BPM:", bpm);
-          const { sound: b } = await Audio.Sound.createAsync(require("../../assets/Beat.wav"));
-          const rate = bpm / 120.0;
-          await b.setIsLoopingAsync(true);
-          await b.setRateAsync(rate, true);
-          await b.setVolumeAsync(1.0);
-          beatObj = b;
-          setBeatSound(b);
         }
 
         // Listener for sync
@@ -93,12 +80,6 @@ export default function TrackPreview({
                 progress.value = withTiming(0);
                 setPosition(0);
                 s.setPositionAsync(0);
-
-                // Stop beat if it's playing
-                if (beatObj) {
-                  beatObj.stopAsync();
-                  beatObj.setPositionAsync(0);
-                }
               }
             }
           }
@@ -114,9 +95,6 @@ export default function TrackPreview({
       if (soundObj) {
         soundObj.unloadAsync();
       }
-      if (beatObj) {
-        beatObj.unloadAsync();
-      }
     };
   }, [uri, bpm]);
 
@@ -131,26 +109,17 @@ export default function TrackPreview({
       if (isPlaying) {
         // Check if finished, if so restart
         if (status.positionMillis >= (status.durationMillis || 0)) {
-          if (beatSound) {
-            await beatSound.setPositionAsync(0);
-            await beatSound.playAsync();
-          }
           await sound.replayAsync();
         } else {
           // Resume from current position
-          if (beatSound) {
-            // content-change: Removed explicit setPositionAsync(0) to allow resume
-            await beatSound.playAsync();
-          }
           await sound.playAsync();
         }
       } else {
         await sound.pauseAsync();
-        if (beatSound) await beatSound.pauseAsync();
       }
     };
     controlSound();
-  }, [isPlaying, sound, beatSound]);
+  }, [isPlaying, sound]);
 
   // Simple formatter
   const formatTime = (ms: number) => {

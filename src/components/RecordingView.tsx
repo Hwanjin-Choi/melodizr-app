@@ -53,23 +53,18 @@ export default function RecordingView({
 
   // Overdub management
   const [backingSounds, setBackingSounds] = useState<{ [key: string]: Audio.Sound }>({});
-  const [beatSound, setBeatSound] = useState<Audio.Sound | null>(null);
   const [volume, setVolume] = useState(0.8);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const preparedRecording = useRef<Audio.Recording | null>(null);
 
   // Load Previous Tracks (Backing Tracks)
   useEffect(() => {
     const soundObjects: { [key: string]: Audio.Sound } = {};
-    let beatObj: Audio.Sound | null = null;
 
     const loadSounds = async () => {
       // Unload existing
       await Promise.all(Object.values(backingSounds).map((s) => s.unloadAsync()));
       setBackingSounds({});
-      if (beatSound) {
-        await beatSound.unloadAsync();
-        setBeatSound(null);
-      }
 
       if (backingTracks && backingTracks.length > 0) {
         try {
@@ -87,10 +82,7 @@ export default function RecordingView({
               s.setOnPlaybackStatusUpdate(async (status) => {
                 if (status.isLoaded && status.didJustFinish) {
                   setIsPreviewPlaying(false);
-                  if (beatObj) {
-                    await beatObj.stopAsync();
-                    await beatObj.setPositionAsync(0);
-                  }
+
                   // Reset all sounds to 0
                   await Promise.all(
                     Object.values(soundObjects).map((so) => so.setPositionAsync(0))
@@ -100,21 +92,6 @@ export default function RecordingView({
             }
           }
           setBackingSounds(soundObjects);
-
-          // 2. Load Beat Track (Step 1 & 2 needs sync if Base exists)
-          // We need BPM from the Base track (backingTracks[0])
-          const baseTrack = backingTracks.find((t) => t.type === "base") || backingTracks[0];
-
-          // Load Beat Track for Preview Sync
-          if (baseTrack && baseTrack.bpm) {
-            const rate = baseTrack.bpm / 120.0;
-            const { sound: b } = await Audio.Sound.createAsync(require("../../assets/Beat.wav"));
-            beatObj = b;
-            await b.setIsLoopingAsync(true);
-            await b.setRateAsync(rate, true);
-            await b.setVolumeAsync(volume * 0.8);
-            setBeatSound(b);
-          }
         } catch (e) {
           console.log("Failed to load sounds", e);
         }
@@ -124,29 +101,40 @@ export default function RecordingView({
 
     return () => {
       Object.values(soundObjects).forEach((s) => s.unloadAsync());
-      if (beatObj) beatObj.unloadAsync();
+      // beatObj removed
     };
   }, [backingTracks, recordingStep]);
 
-  // Handle Recording Sync (Overdub)
+  // 1. Cleanup on Unmount ONLY
   useEffect(() => {
-    const handleSync = async () => {
-      if (isRecording) {
-        // START RECORDING -> START PLAYBACK
-        // Stop preview if running
-        setIsPreviewPlaying(false);
-
+    return () => {
+      if (preparedRecording.current) {
         try {
-          // Permission is already checked in StudioScreen
-          // const perm = await Audio.requestPermissionsAsync();
-          // if (perm.status !== "granted") { ... }
+          preparedRecording.current.stopAndUnloadAsync();
+        } catch (e) {}
+        preparedRecording.current = null;
+      }
+    };
+  }, []);
 
-          // Config Audio Mode for Recording
+  // 2. Proactive Preparation (re-run when state changes, but don't cleanup on dependency change)
+  useEffect(() => {
+    const prepare = async () => {
+      // Only prepare if we are NOT recording and don't have one ready
+      if (!isRecording && !preparedRecording.current) {
+        try {
+          const perm = await Audio.requestPermissionsAsync();
+          if (perm.status !== "granted") return;
+
           await Audio.setAudioModeAsync({
             allowsRecordingIOS: true,
             playsInSilentModeIOS: true,
           });
 
+          // Check again before creating
+          if (preparedRecording.current) return;
+
+          const recording = new Audio.Recording();
           const RECORDING_OPTIONS = {
             isMeteringEnabled: true,
             android: {
@@ -174,8 +162,100 @@ export default function RecordingView({
             },
           };
 
-          // Start Recording
-          const { recording: newRecording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
+          await recording.prepareToRecordAsync(RECORDING_OPTIONS);
+          preparedRecording.current = recording;
+          console.log("[Audio] Recording prepared");
+        } catch (err) {
+          console.error("Failed to prepare recording", err);
+        }
+      }
+    };
+
+    prepare();
+  }, [isRecording]);
+
+  // Handle Recording Sync (Overdub)
+  useEffect(() => {
+    const handleSync = async () => {
+      if (isRecording) {
+        // START RECORDING -> START PLAYBACK
+        // Stop preview if running
+        setIsPreviewPlaying(false);
+
+        try {
+          // Start Recording (Instant)
+          let newRecording: Audio.Recording;
+
+          if (preparedRecording.current) {
+            newRecording = preparedRecording.current;
+            preparedRecording.current = null; // Consume it
+            try {
+              await newRecording.startAsync();
+            } catch (err) {
+              // Fallback if start fails (e.g. already started or invalidated)
+              console.warn("Prepared recording failed to start, recreating...", err);
+              const RECORDING_OPTIONS = {
+                isMeteringEnabled: true,
+                android: {
+                  extension: ".m4a",
+                  outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+                  audioEncoder: Audio.AndroidAudioEncoder.AAC,
+                  sampleRate: 44100,
+                  numberOfChannels: 2,
+                  bitRate: 128000,
+                },
+                ios: {
+                  extension: ".wav",
+                  outputFormat: Audio.IOSOutputFormat.LINEARPCM,
+                  audioQuality: Audio.IOSAudioQuality.MAX,
+                  sampleRate: 44100,
+                  numberOfChannels: 2,
+                  bitRate: 128000,
+                  linearPCMBitDepth: 16,
+                  linearPCMIsBigEndian: false,
+                  linearPCMIsFloat: false,
+                },
+                web: {
+                  mimeType: "audio/wav",
+                  bitsPerSecond: 128000,
+                },
+              };
+              const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
+              newRecording = recording;
+            }
+          } else {
+            // Fallback if not prepared
+            console.log("No prepared recording found, creating new one...");
+            const RECORDING_OPTIONS = {
+              isMeteringEnabled: true,
+              android: {
+                extension: ".m4a",
+                outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+                audioEncoder: Audio.AndroidAudioEncoder.AAC,
+                sampleRate: 44100,
+                numberOfChannels: 2,
+                bitRate: 128000,
+              },
+              ios: {
+                extension: ".wav",
+                outputFormat: Audio.IOSOutputFormat.LINEARPCM,
+                audioQuality: Audio.IOSAudioQuality.MAX,
+                sampleRate: 44100,
+                numberOfChannels: 2,
+                bitRate: 128000,
+                linearPCMBitDepth: 16,
+                linearPCMIsBigEndian: false,
+                linearPCMIsFloat: false,
+              },
+              web: {
+                mimeType: "audio/wav",
+                bitsPerSecond: 128000,
+              },
+            };
+            const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
+            newRecording = recording;
+          }
+
           setRecording(newRecording);
 
           // Pulse animation based on BPM
@@ -261,7 +341,6 @@ export default function RecordingView({
         cleanupUI();
 
         await Promise.all(Object.values(backingSounds).map((s) => s.stopAsync()));
-        if (beatSound) await beatSound.stopAsync();
 
         console.log("Recording finished. URI:", uri);
 
@@ -295,9 +374,7 @@ export default function RecordingView({
         recording.stopAndUnloadAsync(); // Emergency cleanup
       }
       Object.values(backingSounds).forEach((s) => s.stopAsync());
-      if (beatSound) {
-        beatSound.stopAsync();
-      }
+      // if (beatSound) beatSound.stopAsync();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [isRecording]); // Only react to `isRecording` flag for STARTING?
@@ -305,10 +382,8 @@ export default function RecordingView({
   // Volume Adjustment
   useEffect(() => {
     Object.values(backingSounds).forEach((s) => s.setVolumeAsync(volume));
-    if (beatSound) {
-      beatSound.setVolumeAsync(volume * 0.8);
-    }
-  }, [volume, backingSounds, beatSound]);
+    // if (beatSound) beatSound.setVolumeAsync(volume * 0.8);
+  }, [volume, backingSounds]);
 
   // Preview Toggle (Rehearsal)
   const togglePreview = async () => {
@@ -318,7 +393,6 @@ export default function RecordingView({
     if (isPreviewPlaying) {
       // Pause All
       await Promise.all(sounds.map((s) => s.pauseAsync()));
-      if (beatSound) await beatSound.pauseAsync();
       setIsPreviewPlaying(false);
     } else {
       // Play All from 0
@@ -327,10 +401,6 @@ export default function RecordingView({
       await Promise.all(sounds.map((s) => s.setPositionAsync(0)));
       await Promise.all(sounds.map((s) => s.playAsync()));
 
-      if (beatSound) {
-        await beatSound.setPositionAsync(0);
-        await beatSound.playAsync();
-      }
       setIsPreviewPlaying(true);
     }
   };
@@ -358,7 +428,6 @@ export default function RecordingView({
         setRecording(null); // Clear local state
 
         await Promise.all(Object.values(backingSounds).map((s) => s.stopAsync()));
-        if (beatSound) await beatSound.stopAsync();
         cleanupUI();
 
         console.log(
