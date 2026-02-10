@@ -30,7 +30,7 @@ type RecordingViewProps = {
   maxDuration: number | null;
   backingTracks?: any[];
   onRecordPress: () => void;
-  onStopPress: (duration: number, uri?: string) => void;
+  onStopPress: (duration: number, uri?: string, offset?: number) => void;
 };
 
 export default function RecordingView({
@@ -46,6 +46,7 @@ export default function RecordingView({
   const pulseValue = useSharedValue(0);
   const [elapsed, setElapsed] = useState(0);
   const startTimeRef = useRef<number | null>(null);
+  const recordingStartTimeRef = useRef<number | null>(null); // Track when recording actually started
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Real Recording State
@@ -205,6 +206,7 @@ export default function RecordingView({
             preparedRecording.current = null; // Consume it
             try {
               await newRecording.startAsync();
+              recordingStartTimeRef.current = Date.now(); // CAPTURE RECORD START TIME
             } catch (err) {
               // Fallback if start fails (e.g. already started or invalidated)
               console.warn("Prepared recording failed to start, recreating...", err);
@@ -236,6 +238,7 @@ export default function RecordingView({
               };
               const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
               newRecording = recording;
+              recordingStartTimeRef.current = Date.now(); // CAPTURE RECORD START TIME
             }
           } else {
             // Fallback if not prepared
@@ -268,6 +271,7 @@ export default function RecordingView({
             };
             const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
             newRecording = recording;
+            recordingStartTimeRef.current = Date.now(); // CAPTURE RECORD START TIME
           }
 
           setRecording(newRecording);
@@ -300,6 +304,7 @@ export default function RecordingView({
           // Note: We do NOT play beatSound here for Step 1 anymore. Visual only.
           // if (beatSound) { ... } -> Removed for Recording Phase
 
+          // CAPTURE PLAYBACK START TIME
           startTimeRef.current = Date.now();
           setElapsed(0);
 
@@ -356,13 +361,21 @@ export default function RecordingView({
 
         await Promise.all(Object.values(backingSounds).map((s) => s.stopAsync()));
 
+        // CALCULATE OFFSET
+        let offset = 0;
+        if (recordingStartTimeRef.current && startTimeRef.current) {
+          offset = startTimeRef.current - recordingStartTimeRef.current;
+          console.log(`[Audio] Sync Offset Calculated: ${offset}ms (PlaybackStart - RecordStart)`);
+          if (offset < 0) offset = 0; // Should not happen if record started first, but just in case
+        }
+
         console.log("Recording finished. URI:", uri);
 
         // Notify Parent
         if (uri) {
           // Ensure positive duration
           const validDuration = finalDuration > 0 ? finalDuration : 0;
-          onStopPress(validDuration, uri);
+          onStopPress(validDuration, uri, offset);
         } else {
           console.error("Failed to get recording URI");
           Alert.alert("Error", "Recording failed to save.");
@@ -451,7 +464,16 @@ export default function RecordingView({
 
         // Now notify parent
         if (startTimeRef.current && uri) {
-          onStopPress(Date.now() - startTimeRef.current, uri);
+          // CALCULATE OFFSET
+          let offset = 0;
+          if (recordingStartTimeRef.current) {
+            offset = startTimeRef.current - recordingStartTimeRef.current;
+            console.log(
+              `[Audio] Sync Offset Calculated: ${offset}ms (PlaybackStart - RecordStart)`
+            );
+            if (offset < 0) offset = 0;
+          }
+          onStopPress(Date.now() - startTimeRef.current, uri, offset);
         } else {
           console.error("Recording URI is null or start time missing");
         }

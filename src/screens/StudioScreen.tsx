@@ -44,6 +44,7 @@ export default function StudioScreen() {
   const [tracks, setTracks] = useState<any[]>([]);
   const [sessionDuration, setSessionDuration] = useState<number | null>(null);
   const [currentRecordingUri, setCurrentRecordingUri] = useState<string | null>(null);
+  const [currentRecordingOffset, setCurrentRecordingOffset] = useState<number | null>(null);
 
   // Playback State for Interstitial
   const [isPlaying, setIsPlaying] = useState(false);
@@ -189,7 +190,14 @@ export default function StudioScreen() {
             console.log("Extracted/Default BPM:", bpm);
           }
 
-          addTrack(currentStepData.id, trackName, trackColor, trackUri, bpm);
+          addTrack(
+            currentStepData.id,
+            trackName,
+            trackColor,
+            trackUri,
+            bpm,
+            currentRecordingOffset || 0
+          );
 
           if (recordingStep >= 1) {
             console.log("Step Complete. Going to Result.");
@@ -205,7 +213,14 @@ export default function StudioScreen() {
           );
 
           // Fallback to raw recording
-          addTrack(currentStepData.id, "Raw Recording", "#9CA3AF", currentRecordingUri);
+          addTrack(
+            currentStepData.id,
+            "Raw Recording",
+            "#9CA3AF",
+            currentRecordingUri,
+            null,
+            currentRecordingOffset || 0
+          );
           setPhase("interstitial");
         }
       }
@@ -214,7 +229,7 @@ export default function StudioScreen() {
     if (phase === "processing") {
       processRecording();
     }
-  }, [phase, currentRecordingUri]);
+  }, [phase, currentRecordingUri, currentRecordingOffset]);
 
   // Reset player when entering interstitial
   useEffect(() => {
@@ -230,9 +245,10 @@ export default function StudioScreen() {
     name: string,
     color: string,
     uri: string,
-    bpm?: number | null
+    bpm?: number | null,
+    offset?: number
   ) => {
-    setTracks((prev) => [...prev, { id: Date.now(), type, name, color, uri, bpm }]);
+    setTracks((prev) => [...prev, { id: Date.now(), type, name, color, uri, bpm, offset }]);
   };
 
   const startApp = () => {
@@ -244,7 +260,7 @@ export default function StudioScreen() {
     // Start Logic handled in RecordingView
   };
 
-  const handleRecordingStop = async (duration: number, uri?: string) => {
+  const handleRecordingStop = async (duration: number, uri?: string, offset?: number) => {
     // If Step 0, save duration
     if (recordingStep === 0) {
       setSessionDuration(duration);
@@ -252,6 +268,7 @@ export default function StudioScreen() {
 
     if (uri) {
       setCurrentRecordingUri(uri);
+      if (offset) setCurrentRecordingOffset(offset);
     } else {
       console.warn("No URI returned from recording");
     }
@@ -290,6 +307,7 @@ export default function StudioScreen() {
     setTracks([]);
     setSessionDuration(null);
     setCurrentRecordingUri(null);
+    setCurrentRecordingOffset(null);
   };
 
   const handleRetakeTrack = (trackId: number) => {

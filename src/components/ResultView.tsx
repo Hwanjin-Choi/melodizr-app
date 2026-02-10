@@ -11,6 +11,7 @@ type Track = {
   color: string;
   uri: string;
   bpm?: number | null;
+  offset?: number;
 };
 
 type ResultViewProps = {
@@ -74,14 +75,14 @@ export default function ResultView({
           const source =
             typeof track.uri === "string" ? { uri: track.uri } : require("../../assets/demo.wav");
           const { sound } = await Audio.Sound.createAsync(source);
-          return sound;
+          return { sound, offset: track.offset || 0 };
         })
       );
 
       // Auto-stop logic for Master Player
       // We attach a listener to the first main track (index 0) to stop everything when it finishes.
       if (loadedSounds.length > 0) {
-        loadedSounds[0].setOnPlaybackStatusUpdate((status) => {
+        loadedSounds[0].sound.setOnPlaybackStatusUpdate((status) => {
           if (status.isLoaded) {
             if (status.durationMillis) {
               setMasterProgress(status.positionMillis / status.durationMillis);
@@ -97,11 +98,19 @@ export default function ResultView({
 
       // Beat mixing logic removed as per new requirement
 
-      masterSounds.current = loadedSounds;
+      masterSounds.current = loadedSounds.map((item) => item.sound);
       setIsMasterPlaying(true);
 
-      // Play All
-      await Promise.all(loadedSounds.map((s) => s.playAsync()));
+      // Play All with Offset
+      // If a track has an offset (meaning it started RECORDING before the backing track started PLAYING),
+      // we need to skip that initial silence.
+      // So we play from `offset` milliseconds.
+      await Promise.all(
+        loadedSounds.map(({ sound, offset }) => {
+          console.log(`[Audio] Playing track with skip-offset: ${offset}ms`);
+          return sound.playFromPositionAsync(offset);
+        })
+      );
     } catch (e) {
       console.error("Master Playback Failed", e);
       stopMaster();
