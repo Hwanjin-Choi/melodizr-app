@@ -75,12 +75,6 @@ export default function ResultView({
           const source =
             typeof track.uri === "string" ? { uri: track.uri } : require("../../assets/demo.wav");
           const { sound } = await Audio.Sound.createAsync(source);
-
-          // Adjust Volume Mix
-          // Melody should be louder than backing tracks
-          const isMelody = track.type === "melody";
-          await sound.setVolumeAsync(isMelody ? 1.0 : 0.75);
-
           return { sound, offset: track.offset || 0 };
         })
       );

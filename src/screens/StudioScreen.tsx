@@ -7,9 +7,6 @@ import {
   ActionSheetIOS,
   Platform,
   AppState,
-  Modal,
-  ActivityIndicator,
-  Text,
 } from "react-native";
 import Share from "react-native-share"; // Import react-native-share
 
@@ -30,7 +27,6 @@ import {
   setPlaybackAudioMode,
   setRecordingAudioMode,
   createZipArchive,
-  mixTracks,
 } from "../utils/audioUtils";
 import { uploadRecording } from "../services/api";
 
@@ -49,7 +45,6 @@ export default function StudioScreen() {
   const [sessionDuration, setSessionDuration] = useState<number | null>(null);
   const [currentRecordingUri, setCurrentRecordingUri] = useState<string | null>(null);
   const [currentRecordingOffset, setCurrentRecordingOffset] = useState<number | null>(null);
-  const [isProcessingMix, setIsProcessingMix] = useState(false);
 
   // Playback State for Interstitial
   const [isPlaying, setIsPlaying] = useState(false);
@@ -410,44 +405,27 @@ export default function StudioScreen() {
     if (tracks.length === 0) return;
 
     try {
-      setIsProcessingMix(true);
+      const filesToZip = tracks
+        .filter((t) => !!t.uri)
+        .map((t) => ({
+          uri: t.uri,
+          name: `${t.name.replace(/[^a-zA-Z0-9]/g, "_")}.wav`,
+        }));
 
-      // 1. Filter valid tracks
-      // Allow UI to update first
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (filesToZip.length === 0) return;
 
-      const validTracks = tracks.filter((t) => !!t.uri);
-      if (validTracks.length === 0) {
-        setIsProcessingMix(false);
-        return;
-      }
+      // Create ZIP
+      const zipUri = await createZipArchive(filesToZip);
 
-      // 2. Mix Tracks
-      const mixedUri = await mixTracks(validTracks);
-
-      setIsProcessingMix(false);
-
-      // Restore Audio Mode (FFmpeg might have hijacked it)
-      await setPlaybackAudioMode();
-
-      // 3. Share Mixed File (Delay to allow Modal to dismiss completely on iOS)
-      setTimeout(async () => {
-        try {
-          await Share.open({
-            url: mixedUri,
-            type: "audio/mp4",
-            title: "Share Master Mix",
-            message: "Here is my new track from Melodizr!",
-            failOnCancel: false,
-          });
-        } catch (shareError) {
-          console.log("Share cancelled or failed", shareError);
-        }
-      }, 500);
+      await Share.open({
+        url: zipUri,
+        type: "application/zip",
+        title: "Share Tracks",
+        message: "Here are the tracks from my Melodizr session.",
+        failOnCancel: false,
+      });
     } catch (error) {
-      setIsProcessingMix(false);
-      console.log("Mixing failed", error);
-      Alert.alert("Error", "Failed to mix tracks.");
+      console.log("Share all cancelled or failed", error);
     }
   };
 
@@ -506,21 +484,6 @@ export default function StudioScreen() {
           </>
         )}
       </View>
-
-      {/* Loading Modal for Mixing */}
-      <Modal visible={isProcessingMix} transparent animationType="fade">
-        <View className="flex-1 items-center justify-center bg-black/80">
-          <View className="items-center rounded-2xl bg-dark2 p-8">
-            <ActivityIndicator size="large" color="#3B82F6" className="mb-4" />
-            <Text className="mb-2 text-center text-lg font-bold text-white">
-              Preparing your mix...
-            </Text>
-            <Text className="text-center text-sm text-gray-400">
-              Please wait.{"\n"}The share screen will appear automatically.
-            </Text>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
