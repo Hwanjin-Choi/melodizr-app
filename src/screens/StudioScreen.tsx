@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import {
   View,
+  Text,
   SafeAreaView,
   StatusBar,
   Alert,
   ActionSheetIOS,
   Platform,
   AppState,
+  ActivityIndicator,
 } from "react-native";
 import Share from "react-native-share"; // Import react-native-share
 
@@ -26,9 +28,9 @@ import {
   extractBpmFromFilename,
   setPlaybackAudioMode,
   setRecordingAudioMode,
-  createZipArchive,
+  createZipArchive, // Keep if needed for other things, or remove
 } from "../utils/audioUtils";
-import { uploadRecording } from "../services/api";
+import { uploadRecording, mixTracks } from "../services/api";
 
 export type StudioPhase =
   | "welcome"
@@ -45,6 +47,7 @@ export default function StudioScreen() {
   const [sessionDuration, setSessionDuration] = useState<number | null>(null);
   const [currentRecordingUri, setCurrentRecordingUri] = useState<string | null>(null);
   const [currentRecordingOffset, setCurrentRecordingOffset] = useState<number | null>(null);
+  const [isMixing, setIsMixing] = useState(false);
 
   // Playback State for Interstitial
   const [isPlaying, setIsPlaying] = useState(false);
@@ -106,11 +109,12 @@ export default function StudioScreen() {
       title: "Beat & Guitar",
       prompt: "Record your rhythmic foundation to set the groove.",
       apiParams: {
-        instrument: "acoustic_guitar",
-        mode: "chord",
-        // Options: strum_down, strum_up_down, arpeggio, quarter, eighth
-        chord_pattern: "strum_down",
-        grid_resolution: "1/8",
+        mode: "chord_progression",
+        instrument: "", // Not used in this mode based on curl, or implied? Curl shows mode=chord_progression, pattern=..., add_drum=true. No instrument field in Guitar curl.
+        // Wait, the guitar curl does NOT show instrument. It shows mode, pattern, add_drum.
+        // So instrument can be empty string.
+        chord_pattern: "strum_up_down",
+        add_drum: true,
       },
     },
     {
@@ -118,9 +122,10 @@ export default function StudioScreen() {
       title: "Melody",
       prompt: "Sing the lead vocal or melody line on top.",
       apiParams: {
-        instrument: "",
         mode: "vox",
+        instrument: "",
         chord_pattern: "",
+        add_drum: false,
         tune_preset: "hard",
       },
     },
@@ -129,9 +134,10 @@ export default function StudioScreen() {
       title: "Piano Layer",
       prompt: "Add harmonic richness with a piano.",
       apiParams: {
+        mode: "inst",
         instrument: "dry_piano",
-        mode: "chord",
-        chord_pattern: "strum_down",
+        chord_pattern: "", // Not used
+        add_drum: false,
         grid_resolution: "1/16",
       },
     },
@@ -155,6 +161,8 @@ export default function StudioScreen() {
             {
               gridResolution: params.grid_resolution,
               tunePreset: params.tune_preset,
+              // @ts-ignore
+              addDrum: params.add_drum,
             }
           );
 
@@ -405,27 +413,31 @@ export default function StudioScreen() {
     if (tracks.length === 0) return;
 
     try {
-      const filesToZip = tracks
-        .filter((t) => !!t.uri)
-        .map((t) => ({
-          uri: t.uri,
-          name: `${t.name.replace(/[^a-zA-Z0-9]/g, "_")}.wav`,
-        }));
+      const activeTracks = tracks.filter((t) => !!t.uri);
+      if (activeTracks.length === 0) return;
 
-      if (filesToZip.length === 0) return;
+      // Notify user mixing is starting
+      setIsMixing(true);
 
-      // Create ZIP
-      const zipUri = await createZipArchive(filesToZip);
+      const filesToMix = activeTracks.map((t) => ({
+        uri: t.uri,
+      }));
 
-      await Share.open({
-        url: zipUri,
-        type: "application/zip",
-        title: "Share Tracks",
-        message: "Here are the tracks from my Melodizr session.",
-        failOnCancel: false,
+      // Call API to mix
+      const mixedUri = await mixTracks(filesToMix);
+
+      // Dismiss Loading
+      setIsMixing(false);
+
+      await Sharing.shareAsync(mixedUri, {
+        mimeType: "audio/wav",
+        dialogTitle: "Share Mixed Track",
+        UTI: "public.audio",
       });
     } catch (error) {
-      console.log("Share all cancelled or failed", error);
+      console.log("Share/Mix failed", error);
+      setIsMixing(false);
+      Alert.alert("Mixing Failed", "Could not mix tracks. Please try again.");
     }
   };
 
@@ -482,6 +494,17 @@ export default function StudioScreen() {
               />
             )}
           </>
+        )}
+
+        {/* Mixing Overlay */}
+        {isMixing && (
+          <View className="absolute inset-0 z-50 items-center justify-center bg-black/70">
+            <View className="items-center rounded-2xl bg-dark2 p-6">
+              <ActivityIndicator size="large" color="#F97316" className="mb-4" />
+              <Text className="text-lg font-bold text-white">Mixing Audio...</Text>
+              <Text className="mt-1 text-sm text-gray-400">Please wait a moment</Text>
+            </View>
+          </View>
         )}
       </View>
     </SafeAreaView>

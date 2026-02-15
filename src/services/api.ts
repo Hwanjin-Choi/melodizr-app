@@ -16,6 +16,7 @@ const USER_ID = "test_user";
 export interface UploadOptions {
   gridResolution?: string;
   tunePreset?: string;
+  addDrum?: boolean;
 }
 
 export const uploadRecording = async (
@@ -49,8 +50,13 @@ export const uploadRecording = async (
 
     formData.append("user_id", USER_ID);
     formData.append("mode", mode);
-    formData.append("instrument", instrument);
-    formData.append("chord_pattern", chordPattern);
+    if (instrument) formData.append("instrument", instrument);
+    // Map 'chordPattern' to 'pattern' API field
+    if (chordPattern) formData.append("pattern", chordPattern);
+
+    // add_drum (defaults to false if undefined, but user requirement implies explicit control)
+    formData.append("add_drum", options.addDrum ? "true" : "false");
+
     formData.append("wav_only", "true");
 
     if (options.gridResolution) {
@@ -62,6 +68,16 @@ export const uploadRecording = async (
 
     // DEBUG: Log FormData contents
     console.log(`========== [API] Uploading: ${filename} ==========`);
+    console.log("FormData Parameters:");
+    console.log("  audio:", filename, mimeType);
+    console.log("  user_id:", USER_ID);
+    console.log("  mode:", mode);
+    if (instrument) console.log("  instrument:", instrument);
+    if (chordPattern) console.log("  pattern:", chordPattern);
+    console.log("  add_drum:", options.addDrum ? "true" : "false");
+    console.log("  wav_only: true");
+    if (options.gridResolution) console.log("  grid_resolution:", options.gridResolution);
+    if (options.tunePreset) console.log("  tune_preset:", options.tunePreset);
 
     // Revert to fetch now that network is fixed
     const response = await fetch(API_Endpoint, {
@@ -161,12 +177,93 @@ export const uploadRecording = async (
 
       return {
         message: "Received non-audio response",
-        data: json || text,
-        output_audio_url: audioUri,
       };
     }
   } catch (error) {
     console.error("Upload failed details:", error);
+    throw error;
+  }
+};
+
+export const mixTracks = async (tracks: { uri: string }[]): Promise<string> => {
+  try {
+    console.log("[API] Mixing tracks...", tracks.length);
+    const formData = new FormData();
+
+    console.log(`========== [API] Mixing ${tracks.length} Tracks ==========`);
+
+    // Check if we have enough tracks
+    if (tracks.length < 2) {
+      console.warn(
+        "[API] Warning: mix_audio typically requires at least 2 tracks (audio1, audio2)."
+      );
+    }
+
+    tracks.forEach((track, index) => {
+      // Map index to audio1, audio2, audio3
+      // 0 -> audio1, 1 -> audio2, 2 -> audio3
+      const paramName = `audio${index + 1}`;
+
+      const uriParts = track.uri.split(".");
+      const fileType = uriParts[uriParts.length - 1];
+      console.log(`  ${paramName}: ${track.uri}`);
+
+      // @ts-ignore
+      formData.append(paramName, {
+        uri: track.uri,
+        name: `track_${index}.${fileType}`,
+        type: fileType === "m4a" ? "audio/x-m4a" : "audio/wav",
+      });
+    });
+
+    console.log("  user_id:", USER_ID);
+    formData.append("user_id", USER_ID);
+
+    // Endpoint: http://67.70.78.39:57476/mix_audio
+    const response = await fetch(`http://67.70.78.39:57476/mix_audio`, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Mixing failed: ${response.status} ${errorText}`);
+    }
+
+    const blob = await response.blob();
+    const reader = new FileReader();
+
+    return new Promise((resolve, reject) => {
+      reader.onerror = () => {
+        reject(new Error("Failed to read mixed audio blob"));
+      };
+
+      reader.onloadend = async () => {
+        try {
+          const resultString = reader.result as string;
+          const splitResult = resultString.split(",");
+          const base64data = splitResult[1];
+          const filename = `mixed_${Date.now()}.wav`;
+          const newPath = `${FileSystem.documentDirectory}${filename}`;
+
+          await FileSystem.writeAsStringAsync(newPath, base64data, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+
+          console.log("[API] Mixed audio saved to:", newPath);
+          resolve(newPath);
+        } catch (e) {
+          reject(e);
+        }
+      };
+
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error("Mix tracks failed:", error);
     throw error;
   }
 };
