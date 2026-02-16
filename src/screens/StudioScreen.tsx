@@ -109,12 +109,11 @@ export default function StudioScreen() {
       title: "Beat & Guitar",
       prompt: "Record your rhythmic foundation to set the groove.",
       apiParams: {
-        mode: "chord_progression",
-        instrument: "", // Not used in this mode based on curl, or implied? Curl shows mode=chord_progression, pattern=..., add_drum=true. No instrument field in Guitar curl.
-        // Wait, the guitar curl does NOT show instrument. It shows mode, pattern, add_drum.
-        // So instrument can be empty string.
+        mode: "inst",
+        instrument: "",
         chord_pattern: "strum_up_down",
         add_drum: true,
+        grid_resolution: "1/16",
       },
     },
     {
@@ -126,7 +125,7 @@ export default function StudioScreen() {
         instrument: "",
         chord_pattern: "",
         add_drum: false,
-        tune_preset: "hard",
+        tune_preset: "choir",
       },
     },
     {
