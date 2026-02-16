@@ -109,11 +109,11 @@ export default function StudioScreen() {
       title: "Beat & Guitar",
       prompt: "Record your rhythmic foundation to set the groove.",
       apiParams: {
-        mode: "inst",
+        mode: "chord_progression",
         instrument: "",
         chord_pattern: "strum_up_down",
         add_drum: true,
-        grid_resolution: "1/16",
+        grid_resolution: "1/8",
       },
     },
     {
